@@ -141,35 +141,59 @@ here:
 		goto here
 	}
 	getGraph(a,b,mod)
-	fmt.Println("请从上面点选一个起点x=?,y=?")
 	var x1, y1 int
+here2:
+	fmt.Println("请从上面点选一个起点x=?,y=?")
 	fmt.Scanf("x=%d,y=%d\n", &x1, &y1)
 	n := getOrder(x1, y1, a, mod)
 	fmt.Println("n=",n)
+	fmt.Println("n是否太小y/n")
+	var c byte
+	fmt.Scanf("%c\n", &c)
+	if c == 'y'{
+		goto here2
+	}
 	fmt.Println("请输入私钥key=?小于n")
 	var key int
 	fmt.Scanf("key=%d\n", &key)
-	x2, y2 := getNG(x1, y1, x1, y1, a, mod, key)
+	x2, y2, ok := getNG(x1, y1, x1, y1, a, mod, key)
+	if !ok{
+		fmt.Println("key过大")
+		goto here
+	}
 	return a, b, mod, key, x1, y1, x2, y2
 }
 //计算rG, rQ
-func getNG(x1, y1, x2, y2, a, mod, r int) (int, int){
-	for i:=0; i<r; i++{
+func getNG(x1, y1, x2, y2, a, mod, r int) (int, int, bool){
+	var ok bool = true
+	x0 := x1
+	y0 := mod + (-1 * y1 ) % mod
+	for i:=1; i<r; i++{
 		x2, y2 = getAdd(x1, y1, x2, y2, a, mod)
-		fmt.Println(x1, y1, x2, y2, a, mod)
+		if x2 == x0 && y2 == y0{
+			ok = false
+			break
+		}
+		//fmt.Println(x1, y1, x2, y2, a, mod)
 	}
-	return x2, y2
+	return x2, y2, ok
 }
-//公钥加密
+//公钥加密：选择随机数r，将消息M生成密文C，该密文是一个点对，C = {rG, M+rQ}，其中Q为公钥。c={rG, M*rQx} 
 func encrypt(x1, y1, x2, y2, a, mod int) []int {
 here:
 	fmt.Println("请输入r=?用于计算rG,rQ")
 	var r int
 	fmt.Scanf("r=%d\n", &r)
-	//公钥加密：选择随机数r，将消息M生成密文C，该密文是一个点对，C = {rG, M+rQ}，其中Q为公钥。c={rG, M*rQx} 
-	//私钥解密：M + rQ - d(rG) = M + r(dG) - d(rG) = M，其中d、Q分别为私钥、公钥。M*rQx/d(rGx) = M*rdGx/rdGx = M
-	rGx, rGy := getNG(x1, y1, x1, y1, a, mod, r)
-	rQx, _ := getNG(x1, y1, x2, y2, a, mod, r)
+	rGx, rGy, ok := getNG(x1, y1, x1, y1, a, mod, r)
+	if !ok{
+		fmt.Println("r过大")
+		goto here
+	}
+	rQx, _, ok := getNG(x2, y2, x2, y2, a, mod, r)
+	if !ok{
+		fmt.Println("r过大")
+		goto here
+	}
 	if rQx == 0{
 		fmt.Println("r 不合适，rQx==0")
 		goto here
@@ -190,13 +214,13 @@ here:
 	fmt.Println(target)
 	return target
 }
-//私钥解密
+//私钥解密：M + rQ - d(rG) = M + r(dG) - d(rG) = M，其中d、Q分别为私钥、公钥。M*rQx/d(rGx) = M*rdGx/rdGx = M
 func decrypt(x1, y1 int, c []int, key, a, mod int){
 	var m []byte
 	var tmp int
 	rGx := c[0]
 	rGy := c[1]
-	rQx, _ := getNG(x1, y1, rGx, rGy, a, mod, key)
+	rQx, _, _ := getNG(rGx, rGy, rGx, rGy, a, mod, key)
 	fmt.Println("rQx=", rQx, rGx, rGy)
 	for i:=2; i<len(c); i++{
 		tmp = c[i]/rQx
@@ -224,9 +248,14 @@ func signature(x1, y1, key, a, b, mod int) Sign {
 	var sign Sign
 	var r int
 	var str string
+here:
 	fmt.Println("请输入r=?用于签名")
 	fmt.Scanf("r=%d\n", &r)
-	rGx, rGy := getNG(x1, y1, x1, y1, a, mod, r)
+	rGx, rGy, ok := getNG(x1, y1, x1, y1, a, mod, r)
+	if !ok{
+		fmt.Println("r过大")
+		goto here
+	}
 	sign.RGx = rGx
 	sign.RGy = rGy
 	
@@ -246,10 +275,17 @@ func verifySign(sign Sign, x1, y1, Qx, Qy, a, mod int) bool {
 	s2 := getInverse(sign.S, mod)
 	u1 := (h*s2)%mod
 	u2 := (sign.RGx*s2)%mod
-	u1Gx, u1Gy := getNG(x1, y1, x1, y1, a, mod, u1)
-	u2Qx, u2Qy := getNG(Qx, Qy, Qx, Qy, a, mod, u2)
+	u1Gx, u1Gy, ok := getNG(x1, y1, x1, y1, a, mod, u1)
+	if !ok{
+		fmt.Println("u1过大")
+	}
+	u2Qx, u2Qy, ok := getNG(Qx, Qy, Qx, Qy, a, mod, u2)
+	if !ok{
+		fmt.Println("u2过大")
+	}
 	sx, sy := getAdd(u1Gx, u1Gy, u2Qx, u2Qy, a, mod)
-	fmt.Println("sx=", sx, "sy=", sy, "s2=", s2)
+	fmt.Println("sx=", sx, "sy=", sy, "s2=", s2, "h", h, "u1", u1, "u2", u2)
+	fmt.Println("u1Gx", u1Gx, "u1Gy", u1Gy, "u2Qx", u2Qx, "u2Qy", u2Qy)
 	if sx == sign.RGx && sy == sign.RGy{
 		return true
 	}
@@ -263,6 +299,19 @@ func main(){
 	//fmt.Println("pemx=",pemx,"pemy=",pemy)
 	a, b, mod, key, x1, y1, x2, y2 := getKey()
 	fmt.Printf("a=%d, b=%d, mod=%d, key=%d, x1=%d, y1=%d x2=%d, y2=%d\n",a, b, mod, key, x1, y1, x2, y2)
+	x3, y3,_ := getNG(x1, y1, x1, y1, a, mod, 3)
+	x_2, y_2,_ := getNG(x1, y1, x1, y1, a, mod, 2)
+	x34, y34,_ := getNG(x3, y3, x3, y3, a, mod, 4)
+	x26, y26,_ := getNG(x_2, y_2, x_2, y_2, a, mod, 6)
+	fmt.Println("x3", x3, "y3", y3, "x2", x_2, "y2", y_2, "x34", x34, "y34", y34, "x26", x26, "y26", y26)
+	
+	Qx, Qy, _ := getNG(x1, y1, x1, y1, a, mod, 6)
+	rQx2, rQy2, _ := getNG(Qx, Qy, Qx, Qy, a, mod, 2)
+	fmt.Println("Qx=", Qx, "Qy=", Qy, "rQx2=", rQx2, "rQy2=", rQy2)
+	rGx2, rGy2,_ := getNG(x1, y1, x1, y1, a, mod, 2)
+	rQx3, rQy3,_ := getNG(rGx2, rGy2, rGx2, rGy2, a, mod, 6)
+	fmt.Println("rGx2=", rGx2, "rGy2=", rGy2, "rQx3=", rQx3, "rQy3=", rQy3)
+	
 	c := encrypt(x1, y1, x2, y2, a, mod)
 	decrypt(x1, y1, c, key, a, mod)
 	sign := signature(x1, y1, key, a, b, mod)
