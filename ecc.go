@@ -1,6 +1,6 @@
 package main
 import "fmt"
-
+//import "crypto/sha256"
 //求逆元
 func getInverse(input int, mod int) int{
 	var output int = -1
@@ -46,7 +46,6 @@ func getAdd(x1, y1, x2, y2, a, mod int)(x3 int,y3 int){
 	if dx < 0 {
 		dx = -dx
 	}
-	fmt.Println(dy, dx)
 	ret := getGcd(dy, dx)
 	dy = dy/ret
 	dx = dx/ret
@@ -164,7 +163,7 @@ func getNG(x1, y1, x2, y2, a, mod, r int) (int, int){
 //公钥加密
 func encrypt(x1, y1, x2, y2, a, mod int) []int {
 here:
-	fmt.Println("请输入r=?用于计算KG,KQ")
+	fmt.Println("请输入r=?用于计算rG,rQ")
 	var r int
 	fmt.Scanf("r=%d\n", &r)
 	//公钥加密：选择随机数r，将消息M生成密文C，该密文是一个点对，C = {rG, M+rQ}，其中Q为公钥。c={rG, M*rQx} 
@@ -205,8 +204,57 @@ func decrypt(x1, y1 int, c []int, key, a, mod int){
 	}
 	fmt.Println(string(m))
 }
+//求hash
+func hash256(str string) int {
+	/*h := sha256.New()
+	h.Write([]byte(str))
+	return h.Sum(nil)*///256位,32字节
+	return len(str)//压缩为长度信息
+}
+//签名消息结构
+type Sign struct{
+	M string
+	RGx int
+	RGy int
+	S int
+}
 //私钥签名
+//根据随机数r、消息M的哈希h、私钥d，计算s = (h + key*rGx)/r。将消息M、和签名{rG, s}发给接收方
+func signature(x1, y1, key, a, b, mod int) Sign {
+	var sign Sign
+	var r int
+	var str string
+	fmt.Println("请输入r=?用于签名")
+	fmt.Scanf("r=%d\n", &r)
+	rGx, rGy := getNG(x1, y1, x1, y1, a, mod, r)
+	sign.RGx = rGx
+	sign.RGy = rGy
+	
+	fmt.Println("请输入要签名的字符串:")
+	fmt.Scanf("%s\n", &str)	
+	sign.M = str
+	h := hash256(str)
+	sign.S = ((h + key*rGx)*getInverse(r, mod)) % mod
+	fmt.Println("rGx=", rGx, "rGy=", rGy, "h=", h, "s=", sign.S)
+	return sign
+}
 //公钥验证
+//使用发送方公钥Q计算：hG/s + (rGx)Q/s，并与rG比较，如相等即验签成功。
+//原理：hG/s + rGxQ/s = hG/s + rGx*keyG/s = (h+key*rGx)G/s = r(h+key*rGx)G / (h+key*rGx) = rG
+func verifySign(sign Sign, x1, y1, Qx, Qy, a, mod int) bool {
+	h := hash256(sign.M)
+	s2 := getInverse(sign.S, mod)
+	u1 := (h*s2)%mod
+	u2 := (sign.RGx*s2)%mod
+	u1Gx, u1Gy := getNG(x1, y1, x1, y1, a, mod, u1)
+	u2Qx, u2Qy := getNG(Qx, Qy, Qx, Qy, a, mod, u2)
+	sx, sy := getAdd(u1Gx, u1Gy, u2Qx, u2Qy, a, mod)
+	fmt.Println("sx=", sx, "sy=", sy, "s2=", s2)
+	if sx == sign.RGx && sy == sign.RGy{
+		return true
+	}
+	return false
+}
 
 func main(){
 	//x3, y3 := getAdd(3, 10, 3, 10, 1, 23)
@@ -217,4 +265,7 @@ func main(){
 	fmt.Printf("a=%d, b=%d, mod=%d, key=%d, x1=%d, y1=%d x2=%d, y2=%d\n",a, b, mod, key, x1, y1, x2, y2)
 	c := encrypt(x1, y1, x2, y2, a, mod)
 	decrypt(x1, y1, c, key, a, mod)
+	sign := signature(x1, y1, key, a, b, mod)
+	ret := verifySign(sign, x1, y1, x2, y2, a, mod)
+	fmt.Println("verify=", ret)
 }
